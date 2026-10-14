@@ -1,0 +1,28 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard · Workforce Portal</title><link rel="stylesheet" href="css/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Dashboard", MGR); if (!me) return; const V = $('#view');
+
+const isMgr = me.role === 'manager';
+V.innerHTML = `<div class="page-h"><div><h1>${isMgr ? 'Department Dashboard' : 'HR Dashboard'}</h1><p>Real-time workforce overview · refreshes every minute</p></div><span class="sp"></span>
+<div class="bar"><label>From&nbsp;<input type="date" id="from"></label><label>To&nbsp;<input type="date" id="to"></label><button class="pri" id="go">Apply</button><button id="dl">Download summary</button></div></div>
+<div class="cards" id="cards"></div>
+<div class="grid2"><div class="panel"><h2>Department-wise employees</h2><canvas id="c1"></canvas></div><div class="panel"><h2>Attendance trend (check-ins per day)</h2><canvas id="c2"></canvas></div></div>
+<div class="grid2"><div class="panel"><h2>Employee performance (latest review)</h2><canvas id="c3"></canvas></div><div class="panel"><h2>New joiners (last 30 days)</h2><div id="nj"></div></div></div>`;
+$('#to').value = iso(); $('#from').value = iso(new Date(Date.now() - 13 * 864e5));
+let D;
+const load = guard(async () => {
+  D = await api('/dashboard' + qs({ from: $('#from').value, to: $('#to').value }));
+  const c = isMgr ? [['Department employees', D.total], ['Pending approvals', D.pending_leaves], ['Present today', `${D.present_today} (${D.late_today} late)`], ['On leave today', D.on_leave], ['Task completion', D.task_completion_rate + '%'], ['Overdue tasks', D.overdue_tasks]]
+    : [['Total employees', D.total], ['Active employees', D.active], ['Present today', D.present_today], ['On leave today', D.on_leave], ['Pending leave requests', D.pending_leaves], ['New joiners', D.new_joiners.length], ['Attrition (90d / in notice)', `${D.attrition.exited_90d} / ${D.attrition.in_notice}`], ['Task completion', D.task_completion_rate + '%']];
+  $('#cards').innerHTML = c.map(([l, n]) => `<div class="card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  chart('c1', 'doughnut', D.by_department.map((x) => x.label), D.by_department.map((x) => x.n));
+  chart('c2', 'line', D.attendance_trend.map((x) => day(x.label).slice(5)), D.attendance_trend.map((x) => x.n), 'Check-ins');
+  const p = D.performance.filter((x) => x.overall != null); chart('c3', 'bar', p.map((x) => x.full_name), p.map((x) => x.overall), 'Score');
+  $('#nj').innerHTML = table([{ l: 'Name', k: 'full_name' }, { l: 'Designation', k: 'designation' }, { l: 'Joined', f: (r) => day(r.joining_date) }], D.new_joiners, 'No new joiners in the last 30 days.');
+});
+$('#go').onclick = load;
+$('#dl').onclick = () => { const rows = [['Metric', 'Value'], ...[...document.querySelectorAll('.card')].map((c) => [c.querySelector('.l').textContent, c.querySelector('.n').textContent])];
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' })); a.download = 'dashboard-summary.csv'; a.click(); };
+load(); setInterval(load, 60000);
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

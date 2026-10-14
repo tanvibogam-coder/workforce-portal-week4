@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reports & Analytics · Workforce Portal</title><link rel="stylesheet" href="css/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Reports & Analytics", MGR); if (!me) return; const V = $('#view');
+
+const KINDS = { headcount: 'Headcount by department', attendance: 'Attendance by employee', leave: 'Leave by department', performance: 'Performance reviews', tasks: 'Task performance by employee' };
+V.innerHTML = `<div class="page-h"><div><h1>Reports &amp; Analytics</h1><p>Run, visualise and export workforce reports</p></div></div>
+<div class="panel"><div class="bar"><select id="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><label>From&nbsp;<input type="date" id="from"></label><label>To&nbsp;<input type="date" id="to"></label><button class="pri" id="run">Run report</button><button id="csv">Download CSV</button></div></div>
+<div class="grid2"><div class="panel"><h2 id="t">Report</h2><div id="out"></div></div><div class="panel"><h2>Chart</h2><canvas id="c1"></canvas></div></div>`;
+const d = new Date(); $('#from').value = iso(new Date(d.getFullYear(), d.getMonth(), 1)); $('#to').value = iso();
+const args = () => qs({ from: $('#from').value, to: $('#to').value });
+const run = guard(async () => { const k = $('#kind').value, r = await api(`/reports/${k}` + args()); $('#t').textContent = KINDS[k];
+  const keys = r.rows.length ? Object.keys(r.rows[0]) : []; $('#out').innerHTML = table(keys.map((c) => ({ l: c.replace(/_/g, ' '), f: (x) => esc(x[c] ?? '—') })), r.rows, 'No data for this period.');
+  const num = keys.find((c) => typeof r.rows[0]?.[c] === 'number' || /^\d/.test(String(r.rows[0]?.[c]))), lab = keys[0] === 'department' && k !== 'headcount' && k !== 'leave' ? keys[1] : keys[0], agg = {};
+  r.rows.forEach((x) => { const key = k === 'leave' ? x.department + ' · ' + x.leave_type : x[lab]; agg[key] = (agg[key] || 0) + Number(x[k === 'leave' ? 'days' : num] || 0); });
+  if (num) chart('c1', 'bar', Object.keys(agg), Object.values(agg), (k === 'leave' ? 'days' : num).replace(/_/g, ' ')); });
+$('#run').onclick = run; $('#kind').onchange = run;
+$('#csv').onclick = guard(() => download(`/reports/${$('#kind').value}` + qs({ from: $('#from').value, to: $('#to').value, format: 'csv' }), $('#kind').value + '-report.csv'));
+run();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

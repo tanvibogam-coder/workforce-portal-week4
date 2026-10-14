@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>System Settings · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("System Settings", HRR); if (!me) return; const V = $('#view');
+
+const edit = me.role === 'super_admin', S = await api('/admin/settings');
+const F = [['work_start', 'Work day start (HH:MM)'], ['grace_minutes', 'Late-arrival grace (minutes)'], ['hr_approval_days', 'Leave longer than this many days also needs HR approval'], ['leave_defaults', 'Default leave balances (JSON)'], ['perf_weights', 'Performance score weights (JSON)']];
+V.innerHTML = `<div class="page-h"><div><h1>System Settings</h1><p>${edit ? 'Configure schedules, approval hierarchy and scoring' : 'Read-only — only the Super Administrator can change settings'}</p></div><span class="sp"></span>${HRR.includes(me.role) ? '<button id="rem">Run scheduled reminders now</button>' : ''}</div>
+<div class="panel f" style="max-width:640px">${F.map(([k, l]) => `<label for="${k}">${l}</label><input id="${k}" value="${esc(S[k])}" ${edit ? '' : 'disabled'}>`).join('')}${edit ? '<p><button class="pri" id="save" style="margin-top:14px">Save settings</button></p>' : ''}</div>
+<div class="panel"><h2>Audit log (latest 200)</h2><div id="aud"></div></div>`;
+if (edit) $('#save').onclick = guard(async () => { const b = {}; F.forEach(([k]) => (b[k] = $('#' + k).value)); toast((await api('/admin/settings', { method: 'PUT', body: b })).message); });
+$('#rem').onclick = guard(async () => { toast(`${(await api('/notifications/run-reminders', { method: 'POST' })).sent} reminder(s) sent`); loadNotes(); });
+$('#aud').innerHTML = table([{ l: 'When', f: (x) => fmt(x.created_at) }, { l: 'User', f: (x) => esc(x.user || 'system') }, { l: 'Action', k: 'action' }, { l: 'Details', f: (x) => `<span class="wrap">${esc(x.details || '')}</span>` }], await api('/admin/audit'));
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

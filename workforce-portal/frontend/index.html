@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Login · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div class="login"><div class="panel f"><h1>Workforce Portal</h1><p style="color:var(--soft)">Employee Performance &amp; Operations Management</p>
+<div id="msg" class="err" role="alert"></div>
+<form id="f" novalidate><label for="email">Email</label><input id="email" type="email" autocomplete="username"><span class="err" id="e1"></span>
+<label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"><span class="err" id="e2"></span>
+<p><button class="pri" style="width:100%;margin-top:14px" id="go">Sign in</button></p></form>
+<div class="demo"><small>Demo accounts (click to fill):</small><br>
+<button type="button" data-u="admin@company.com" data-p="Admin@123">Super Admin</button><button type="button" data-u="hr@company.com" data-p="Hr@12345">HR Admin</button><button type="button" data-u="manager@company.com" data-p="Manager@123">Manager</button><button type="button" data-u="employee@company.com" data-p="Employee@123">Employee</button></div></div></div>
+<script src="js/api.js"></script><script>
+const $ = (s) => document.querySelector(s), HOME = { super_admin: 'hr-dashboard.html', hr_admin: 'hr-dashboard.html', manager: 'hr-dashboard.html', employee: 'employee-dashboard.html' };
+if (new URLSearchParams(location.search).get('expired')) $('#msg').textContent = 'Your session expired. Please sign in again.';
+document.querySelectorAll('.demo button').forEach((b) => (b.onclick = () => { $('#email').value = b.dataset.u; $('#pw').value = b.dataset.p; }));
+$('#f').onsubmit = async (e) => { e.preventDefault(); ['e1', 'e2', 'msg'].forEach((i) => ($('#' + i).textContent = ''));
+  const email = $('#email').value.trim(), password = $('#pw').value; let bad = false;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $('#e1').textContent = 'Enter a valid email address.'; bad = true; } if (!password) { $('#e2').textContent = 'Password is required.'; bad = true; } if (bad) return;
+  $('#go').disabled = true;
+  try { const r = await api('/auth/login', { method: 'POST', body: { email, password } }); Session.set(r.token, r.user); location.href = HOME[r.user.role]; }
+  catch (err) { $('#msg').textContent = err.message; } finally { $('#go').disabled = false; } };
+if (Session.tok() && Session.user()) location.href = HOME[Session.user().role];
+</script></body></html>

@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Task Management", ALL); if (!me) return; const V = $('#view');
+
+const isMgr = MGR.includes(me.role), pid = new URLSearchParams(location.search).get('project_id') || '', ST = ['Not Started', 'In Progress', 'Under Review', 'Completed', 'On Hold'];
+const projects = await api('/projects'); let rows = [];
+V.innerHTML = `<div class="page-h"><div><h1>Tasks</h1><p>Track status, deadlines and overdue work</p></div><span class="sp"></span>${isMgr ? '<button class="pri" id="new">+ New task</button>' : ''}</div>
+<div class="bar"><select id="proj"><option value="">All projects</option>${projects.map((p) => `<option value="${p.id}" ${p.id == pid ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select><select id="st"><option value="">Any status</option>${ST.map((s) => `<option>${s}</option>`).join('')}</select></div>
+<div class="grid2"><div class="panel"><h2>Task list</h2><div id="list"></div></div><div class="panel"><h2>Status distribution</h2><canvas id="c1"></canvas></div></div>`;
+const load = guard(async () => { rows = await api('/tasks' + qs({ project_id: $('#proj').value, status: $('#st').value }));
+  $('#list').innerHTML = table([{ l: 'Task', k: 'title' }, { l: 'Project', k: 'project' }, { l: 'Assignee', k: 'assignee' }, { l: 'Priority', f: (r) => badge(r.priority) }, { l: 'Deadline', f: (r) => day(r.deadline) + (r.overdue ? ' ' + badge('Overdue') : '') },
+    { l: 'Status', f: (r) => `<select data-t="${r.id}">${ST.map((s) => `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}</select>` }], rows, 'No tasks found.');
+  const c = {}; rows.forEach((r) => (c[r.status] = (c[r.status] || 0) + 1)); chart('c1', 'doughnut', Object.keys(c), Object.values(c)); });
+V.onchange = guard(async (e) => { const s = e.target; if (!s.dataset.t) return; await api('/tasks/' + s.dataset.t, { method: 'PUT', body: { status: s.value } }); toast('Task updated'); load(); });
+$('#proj').onchange = load; $('#st').onchange = load;
+if (isMgr) $('#new').onclick = guard(async () => { const people = await lookup();
+  modal('New task', [{ name: 'project_id', label: 'Project', type: 'select', options: projects.map((p) => [p.id, p.name]), required: true }, { name: 'assignee_id', label: 'Assign to', type: 'select', options: people, required: true }, { name: 'title', label: 'Task title', required: true }, { name: 'priority', label: 'Priority', type: 'select', options: ['Low', 'Medium', 'High'].map((x) => [x, x]) }, { name: 'deadline', label: 'Deadline', type: 'date' }], { project_id: pid, priority: 'Medium' },
+    async (v) => { await api('/tasks', { method: 'POST', body: { ...v, project_id: +v.project_id, assignee_id: +v.assignee_id } }); toast('Task assigned'); load(); }); });
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Dashboard · Workforce Portal</title><link rel="stylesheet" href="css/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("My Dashboard", ALL); if (!me) return; const V = $('#view');
+
+V.innerHTML = '<div class="empty">Loading…</div>';
+const D = await api('/dashboard?me=1'), p = D.profile, a = D.attendance, t = D.today;
+V.innerHTML = `<div class="page-h"><div><h1>Welcome, ${esc(p.full_name)}</h1><p>${esc(p.designation)} · ${esc(p.department)} · Manager: ${esc(p.manager || '—')}</p></div></div>
+<div class="cards"><div class="card"><div class="n">${a.present}</div><div class="l">Days present this month</div></div><div class="card"><div class="n">${a.late}</div><div class="l">Late arrivals</div></div><div class="card"><div class="n">${a.hours}</div><div class="l">Hours worked</div></div><div class="card"><div class="n">${D.pending_leaves.length}</div><div class="l">Pending leave requests</div></div></div>
+<div class="grid2"><div class="panel"><h2>Today</h2><p>${t ? `Checked in <b>${fmt(t.check_in)}</b>${t.check_out ? ` · out <b>${fmt(t.check_out)}</b>` : ''}` : 'Not checked in yet.'}</p>
+<button class="pri" id="in" ${t ? 'disabled' : ''}>Check in</button> <button id="outb" ${!t || t.check_out ? 'disabled' : ''}>Check out</button></div>
+<div class="panel"><h2>Leave balance</h2>${table([{ l: 'Type', k: 'leave_type' }, { l: 'Days left', k: 'balance' }], D.balances)}</div></div>
+<div class="grid2"><div class="panel"><h2>Task status</h2><canvas id="c1"></canvas></div><div class="panel"><h2>Latest performance feedback</h2>${D.feedback ? `<p><b>${esc(D.feedback.period)}</b> · ${D.feedback.overall} ${badge(D.feedback.rating)}</p><p>${esc(D.feedback.feedback || '')}</p>` : '<div class="empty">No review yet.</div>'}</div></div>
+<div class="grid2"><div class="panel"><h2>Assigned projects</h2>${table([{ l: 'Project', f: (r) => `<a href="tasks.html?project_id=${r.id}">${esc(r.name)}</a>` }, { l: 'Status', f: (r) => badge(r.status) }], D.projects, 'No projects assigned.')}</div>
+<div class="panel"><h2>Pending leave requests</h2>${table([{ l: 'Type', k: 'leave_type' }, { l: 'From', f: (r) => day(r.start_date) }, { l: 'To', f: (r) => day(r.end_date) }, { l: 'Status', f: (r) => badge(r.status) }], D.pending_leaves, 'Nothing pending.')}</div></div>`;
+chart('c1', 'doughnut', D.task_status.map((x) => x.status), D.task_status.map((x) => x.n));
+$('#in').onclick = guard(async () => { toast((await api('/attendance/check-in', { method: 'POST' })).message); setTimeout(() => location.reload(), 700); });
+$('#outb').onclick = guard(async () => { toast((await api('/attendance/check-out', { method: 'POST' })).message); setTimeout(() => location.reload(), 700); });
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

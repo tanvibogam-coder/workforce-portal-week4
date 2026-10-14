@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>User & Role Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("User & Role Management", ['super_admin']); if (!me) return; const V = $('#view');
+
+const ROLES = [['super_admin', 'Super Administrator'], ['hr_admin', 'HR Administrator'], ['manager', 'Department Manager'], ['employee', 'Employee']];
+V.innerHTML = `<div class="page-h"><div><h1>Users &amp; Roles</h1><p>Manage system access and permissions</p></div></div><div class="tabs"><button class="on" data-t="u">Users</button><button data-t="l">Login activity</button></div><div class="panel" id="tab"></div>`;
+let tab = 'u';
+const load = guard(async () => {
+  if (tab === 'u') { const r = await api('/admin/users');
+    $('#tab').innerHTML = table([{ l: 'Employee', k: 'full_name' }, { l: 'Email', k: 'email' }, { l: 'Role', f: (u) => `<select data-r="${u.id}">${ROLES.map(([v, l]) => `<option value="${v}" ${v === u.role ? 'selected' : ''}>${l}</option>`).join('')}</select>` }, { l: 'Status', f: (u) => badge(u.active ? 'Active' : 'Inactive') },
+      { l: '', f: (u) => `<button class="sm" data-a="${u.id}" data-v="${u.active ? 0 : 1}">${u.active ? 'Disable' : 'Enable'}</button> <button class="sm" data-p="${u.id}">Reset password</button>` }], r); }
+  else { const r = await api('/admin/logins'); $('#tab').innerHTML = table([{ l: 'When', f: (x) => fmt(x.created_at) }, { l: 'Email', k: 'email' }, { l: 'Result', f: (x) => badge(x.success ? 'Approved' : 'Rejected').replace('Approved', 'Success').replace('Rejected', 'Failed') }], r); }
+});
+V.onclick = guard(async (e) => { const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.t) { tab = b.dataset.t; document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b)); load(); }
+  if (b.dataset.a) { if (await confirmBox(b.dataset.v === '1' ? 'Enable this account?' : 'Disable this account? The user will be unable to log in.')) { await api('/admin/users/' + b.dataset.a, { method: 'PUT', body: { active: b.dataset.v === '1' } }); toast('Updated'); load(); } }
+  if (b.dataset.p) modal('Reset password', [{ name: 'password', label: 'New password (min 8 characters)', type: 'password', required: true }], {}, async (v) => { await api('/admin/users/' + b.dataset.p, { method: 'PUT', body: { password: v.password } }); toast('Password reset'); }); });
+V.onchange = guard(async (e) => { if (!e.target.dataset.r) return; await api('/admin/users/' + e.target.dataset.r, { method: 'PUT', body: { role: e.target.value } }); toast('Role updated'); });
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

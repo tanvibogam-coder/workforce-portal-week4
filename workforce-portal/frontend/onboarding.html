@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Onboarding Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Onboarding Management", HRR); if (!me) return; const V = $('#view');
+
+V.innerHTML = `<div class="page-h"><div><h1>Onboarding</h1><p>Checklists assigned to HR and IT teams</p></div></div><div class="panel"><div id="list"></div></div><div class="panel" id="det" style="display:none"></div>`;
+let cur = null;
+const items = guard(async (id, name) => { cur = [id, name]; const r = await api('/onboarding/' + id); const d = $('#det'); d.style.display = 'block';
+  d.innerHTML = `<h2>Checklist · ${esc(name)}</h2>${table([{ l: 'Done', f: (x) => `<input type="checkbox" data-o="${x.id}" ${x.done ? 'checked' : ''}>` }, { l: 'Item', k: 'item' }, { l: 'Owner', f: (x) => badge(x.owner) }, { l: 'Completed', f: (x) => fmt(x.done_at) }], r)}`; });
+const load = guard(async () => { const r = await api('/onboarding');
+  $('#list').innerHTML = table([{ l: 'ID', k: 'emp_code' }, { l: 'Employee', k: 'full_name' }, { l: 'Department', k: 'department' }, { l: 'Joined', f: (x) => day(x.joining_date) }, { l: 'Progress', f: (x) => `${bar(Math.round((100 * x.done) / x.total))}<small>${x.done}/${x.total}</small>` }, { l: 'Status', f: (x) => badge(x.status) }, { l: '', f: (x) => `<button class="sm" data-id="${x.id}" data-n="${esc(x.full_name)}">Checklist</button>` }], r); });
+V.onclick = (e) => { const b = e.target.closest('button'); if (b && b.dataset.id) items(b.dataset.id, b.dataset.n); };
+V.onchange = guard(async (e) => { if (!e.target.dataset.o) return; const r = await api(`/onboarding/${e.target.dataset.o}/toggle`, { method: 'POST' }); if (!r.remaining) toast('Onboarding complete — employee is now Active.'); await items(...cur); load(); });
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

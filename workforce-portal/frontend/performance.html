@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Performance Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Performance Management", ALL); if (!me) return; const V = $('#view');
+
+const isMgr = MGR.includes(me.role); let emp = me.employee_id; const people = isMgr ? await lookup() : [];
+V.innerHTML = `<div class="page-h"><div><h1>Performance</h1><p>Goals, KPIs, reviews and trends · scored on task completion, quality, productivity, attendance and goal achievement</p></div></div>
+${isMgr ? `<div class="panel"><h2>Team overview</h2><div id="ov"></div></div><div class="bar"><label>Employee&nbsp;<select id="emp">${people.map(([v, l]) => `<option value="${v}" ${v == emp ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label><button id="goal">+ Goal / KPI</button><button class="pri" id="rev">+ Performance review</button></div>` : ''}
+<div class="grid2"><div class="panel"><h2>Goals &amp; KPIs</h2><div id="goals"></div></div><div class="panel"><h2>Performance trend</h2><canvas id="c1"></canvas></div></div>
+<div class="panel"><h2>Review history</h2><div id="revs"></div></div>
+<div class="panel"><h2>Self-assessment</h2><div class="bar"><button id="self">Submit self-assessment</button></div></div>`;
+const load = guard(async () => {
+  const [g, r] = await Promise.all([api('/performance/goals?employee_id=' + emp), api('/performance/reviews?employee_id=' + emp)]);
+  $('#goals').innerHTML = table([{ l: 'Goal', k: 'title' }, { l: 'KPI', f: (x) => esc(x.kpi || '—') }, { l: 'Target', f: (x) => esc(x.target || '—') }, { l: 'Progress', f: (x) => `${bar(x.progress)}<small>${x.progress}%</small>` }, { l: '', f: (x) => `<button class="sm" data-p="${x.id}" data-v="${x.progress}">Update</button>` }], g, 'No goals defined.');
+  const m = r.filter((x) => x.kind === 'manager');
+  $('#revs').innerHTML = table([{ l: 'Period', k: 'period' }, { l: 'Type', k: 'kind' }, { l: 'Tasks', f: (x) => x.task_completion ?? '—' }, { l: 'Quality', f: (x) => x.quality_score ?? '—' }, { l: 'Productivity', f: (x) => x.productivity ?? '—' }, { l: 'Attendance', f: (x) => x.attendance_score ?? '—' }, { l: 'Goals', f: (x) => x.goal_achievement ?? '—' }, { l: 'Overall', f: (x) => `<b>${x.overall}</b>` }, { l: 'Rating', f: (x) => badge(x.rating) }, { l: 'Feedback', f: (x) => `<span title="${esc(x.feedback || '')}">${esc((x.feedback || '—').slice(0, 40))}</span>` }], r, 'No reviews yet.');
+  const t = [...m].reverse(); chart('c1', 'line', t.map((x) => x.period), t.map((x) => x.overall), 'Overall score');
+  if (isMgr) { const o = await api('/performance/overview'); $('#ov').innerHTML = table([{ l: 'Employee', k: 'full_name' }, { l: 'Department', k: 'department' }, { l: 'Latest score', f: (x) => x.overall ?? '—' }, { l: 'Rating', f: (x) => (x.rating ? badge(x.rating) : '—') }, { l: 'Goal progress', f: (x) => (x.goal_progress != null ? bar(x.goal_progress) + `<small>${x.goal_progress}%</small>` : '—') }, { l: '', f: (x) => `<button class="sm" data-view="${x.id}">View</button>` }], o); }
+});
+V.onclick = guard(async (e) => { const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.view) { emp = b.dataset.view; $('#emp').value = emp; load(); window.scrollTo(0, 300); }
+  if (b.dataset.p) modal('Update progress', [{ name: 'progress', label: 'Progress %', type: 'number', min: 0, max: 100, required: true }], { progress: b.dataset.v }, async (v) => { await api('/performance/goals/' + b.dataset.p, { method: 'PUT', body: { progress: +v.progress } }); load(); }); });
+if (isMgr) {
+  $('#emp').onchange = (e) => { emp = e.target.value; load(); };
+  $('#goal').onclick = () => modal('Define goal / KPI', [{ name: 'title', label: 'Goal', required: true }, { name: 'kpi', label: 'KPI' }, { name: 'target', label: 'Target' }, { name: 'due_date', label: 'Due date', type: 'date' }], {}, async (v) => { await api('/performance/goals', { method: 'POST', body: { ...v, employee_id: +emp } }); toast('Goal added'); load(); });
+  $('#rev').onclick = () => modal('Performance review', [{ name: 'period', label: 'Evaluation period (e.g. Q3 2026)', required: true }, { name: 'quality_score', label: 'Quality score (0-100)', type: 'number', min: 0, max: 100, required: true }, { name: 'productivity', label: 'Productivity (0-100)', type: 'number', min: 0, max: 100, required: true }, { name: 'goal_achievement', label: 'Goal achievement (0-100)', type: 'number', min: 0, max: 100, required: true }, { name: 'feedback', label: 'Structured feedback', type: 'textarea' }], {},
+    async (v) => { const r = await api('/performance/reviews', { method: 'POST', body: { ...v, quality_score: +v.quality_score, productivity: +v.productivity, goal_achievement: +v.goal_achievement, employee_id: +emp } }); toast(`Saved · overall ${r.overall} (${r.rating}). Task completion and attendance were calculated automatically.`); load(); });
+}
+$('#self').onclick = () => modal('Self-assessment', [{ name: 'period', label: 'Period', required: true }, { name: 'score', label: 'Your score (0-100)', type: 'number', min: 0, max: 100, required: true }, { name: 'comment', label: 'Comments', type: 'textarea' }], {}, async (v) => { await api('/performance/self', { method: 'POST', body: { ...v, score: +v.score } }); toast('Self-assessment submitted'); if (emp == me.employee_id) load(); });
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

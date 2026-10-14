@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Employee Directory · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Employee Directory", MGR); if (!me) return; const V = $('#view');
+
+let page = 1, ROWS = [], total = 0; const per = 8, isHR = HRR.includes(me.role), depts = await deptOpts();
+const tenure = (d) => `${Math.floor(d / 365)}y ${Math.floor((d % 365) / 30)}m`;
+V.innerHTML = `<div class="page-h"><div><h1>Employee Directory</h1><p>Search, filter and manage employee records</p></div><span class="sp"></span>${isHR ? '<button class="pri" id="add">+ Add employee</button> <button id="exp">Export CSV</button>' : ''}</div>
+<div class="panel"><div class="bar"><input id="q" placeholder="Search by employee ID or name"><select id="dept"><option value="">All departments</option>${depts.map((d) => `<option value="${d[0]}">${esc(d[1])}</option>`).join('')}</select>
+<select id="st"><option value="">Any status</option>${['Active', 'Onboarding', 'Inactive', 'Exited'].map((s) => `<option>${s}</option>`).join('')}</select></div><div id="list"></div><div class="bar" id="pager"></div></div>`;
+const load = guard(async () => {
+  const r = await api('/employees' + qs({ q: $('#q').value, dept: $('#dept').value, status: $('#st').value, page, per })); ROWS = r.items; total = r.total;
+  $('#list').innerHTML = table([{ l: 'ID', k: 'emp_code' }, { l: 'Name', f: (x) => `<a href="employee-profile.html?id=${x.id}">${esc(x.full_name)}</a>` }, { l: 'Department', k: 'department' }, { l: 'Designation', k: 'designation' }, { l: 'Manager', k: 'manager' },
+    { l: 'Joined', f: (x) => day(x.joining_date) }, { l: 'Tenure', f: (x) => tenure(x.tenure_days) }, { l: 'Status', f: (x) => badge(x.status) },
+    ...(isHR ? [{ l: '', f: (x) => `<button class="sm" data-e="${x.id}">Edit</button> ${['Active', 'Onboarding'].includes(x.status) ? `<button class="sm dng" data-d="${x.id}">Deactivate</button>` : ''}` }] : [])], ROWS, 'No employees match your filters.');
+  const pages = Math.max(1, Math.ceil(total / per));
+  $('#pager').innerHTML = `<button id="pv" ${page <= 1 ? 'disabled' : ''}>Previous</button><span>Page ${page} of ${pages} · ${total} employees</span><button id="nx" ${page >= pages ? 'disabled' : ''}>Next</button>`;
+  $('#pv').onclick = () => { page--; load(); }; $('#nx').onclick = () => { page++; load(); };
+});
+['q', 'dept', 'st'].forEach((id) => $('#' + id).addEventListener(id === 'q' ? 'input' : 'change', () => { page = 1; load(); }));
+const form = async (init) => {
+  const mg = await lookup(); const T = ['Full-time', 'Part-time', 'Contract', 'Intern'].map((x) => [x, x]);
+  modal(init ? 'Edit employee' : 'Add employee', [{ name: 'full_name', label: 'Full name', required: true }, { name: 'email', label: 'Email address', type: 'email', required: true }, { name: 'phone', label: 'Contact number' },
+    { name: 'department_id', label: 'Department', type: 'select', options: depts, required: true }, { name: 'designation', label: 'Designation', required: true }, { name: 'manager_id', label: 'Reporting manager', type: 'select', options: mg },
+    { name: 'joining_date', label: 'Date of joining', type: 'date', required: true }, { name: 'employment_type', label: 'Employment type', type: 'select', options: T }, { name: 'work_location', label: 'Work location' }, { name: 'salary_band', label: 'Salary band' },
+    ...(init ? [{ name: 'status', label: 'Status', type: 'select', options: ['Active', 'Onboarding', 'Inactive', 'Exited'].map((x) => [x, x]) }] : [])], init,
+    async (v) => { const r = await api(init ? '/employees/' + init.id : '/employees', { method: init ? 'PUT' : 'POST', body: v }); toast(r.message || 'Saved'); load(); });
+};
+if (isHR) {
+  $('#add').onclick = guard(() => form());
+  $('#exp').onclick = guard(() => download('/employees/export', 'employees.csv'));
+  $('#list').onclick = guard(async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.e) return form(ROWS.find((r) => r.id == b.dataset.e));
+    if (b.dataset.d && await confirmBox('Deactivate this employee? Their login will be disabled.')) { toast((await api(`/employees/${b.dataset.d}/deactivate`, { method: 'POST' })).message); load(); }
+  });
+}
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

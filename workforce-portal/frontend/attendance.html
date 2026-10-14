@@ -1,0 +1,37 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Attendance Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Attendance Management", ALL); if (!me) return; const V = $('#view');
+
+const isMgr = MGR.includes(me.role), isHR = HRR.includes(me.role);
+let tab = 'mine', emp = me.employee_id, month = iso().slice(0, 7); const people = isMgr ? await lookup() : [];
+V.innerHTML = `<div class="page-h"><div><h1>Attendance</h1><p>Check-in/out, history, summaries and exceptions</p></div><span class="sp"></span><button class="pri" id="in">Check in</button><button id="outb">Check out</button></div>
+<div class="bar"><label>Month&nbsp;<input type="month" id="month" value="${month}"></label>${isMgr ? `<label>Employee&nbsp;<select id="emp">${people.map(([v, l]) => `<option value="${v}" ${v == emp ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}</div>
+<div class="tabs"><button data-t="mine" class="on">History</button>${isMgr ? '<button data-t="team">Monthly summary</button><button data-t="exc">Exceptions</button>' : ''}</div><div id="tab"></div>`;
+const edit = (r) => modal('Correct attendance', [{ name: 'check_in', label: 'Check-in', type: 'datetime-local', required: true }, { name: 'check_out', label: 'Check-out', type: 'datetime-local' }, { name: 'reason', label: 'Reason (audited)', type: 'textarea', required: true }],
+  { check_in: (r.check_in || '').slice(0, 16), check_out: (r.check_out || '').slice(0, 16) }, async (v) => { toast((await api('/attendance/' + r.id, { method: 'PUT', body: v })).message); render(); });
+let cache = [];
+const render = guard(async () => {
+  const T = $('#tab');
+  if (tab === 'mine') {
+    cache = await api('/attendance' + qs({ employee_id: emp, month }));
+    const hrs = cache.reduce((s, r) => s + (r.hours || 0), 0).toFixed(1);
+    T.innerHTML = `<div class="grid2"><div class="panel"><h2>Daily records · ${hrs} h total</h2>${table([{ l: 'Date', f: (r) => day(r.att_date) }, { l: 'Check-in', f: (r) => fmt(r.check_in) }, { l: 'Check-out', f: (r) => fmt(r.check_out) }, { l: 'Hours', f: (r) => r.hours ?? '—' }, { l: 'Status', f: (r) => badge(r.status) }, ...(isHR ? [{ l: '', f: (r) => `<button class="sm" data-c="${r.id}">Correct</button>` }] : [])], cache, 'No attendance records this month.')}</div><div class="panel"><h2>Hours trend</h2><canvas id="c1"></canvas></div></div>`;
+    const s = [...cache].reverse(); chart('c1', 'bar', s.map((r) => day(r.att_date).slice(5)), s.map((r) => r.hours || 0), 'Hours');
+  } else if (tab === 'team') {
+    const rows = await api('/attendance/summary?month=' + month), by = {}; rows.forEach((r) => (by[r.department] = (by[r.department] || 0) + Number(r.present)));
+    T.innerHTML = `<div class="grid2"><div class="panel"><h2>Employee summary</h2>${table([{ l: 'Employee', k: 'full_name' }, { l: 'Department', k: 'department' }, { l: 'Days present', k: 'present' }, { l: 'Late', k: 'late' }, { l: 'Missing check-out', k: 'missing' }, { l: 'Hours', k: 'hours' }], rows)}</div><div class="panel"><h2>Department-wise attendance (days present)</h2><canvas id="c1"></canvas></div></div>`;
+    chart('c1', 'bar', Object.keys(by), Object.values(by), 'Days present');
+  } else {
+    cache = await api('/attendance/exceptions');
+    T.innerHTML = `<div class="panel"><h2>Late arrivals &amp; missing check-outs (30 days)</h2>${table([{ l: 'Employee', k: 'full_name' }, { l: 'Date', f: (r) => day(r.att_date) }, { l: 'Check-in', f: (r) => fmt(r.check_in) }, { l: 'Check-out', f: (r) => fmt(r.check_out) }, { l: 'Issue', f: (r) => badge(r.status) }, ...(isHR ? [{ l: '', f: (r) => `<button class="sm" data-c="${r.id}">Correct</button>` }] : [])], cache, 'No exceptions — great!')}</div>`;
+  }
+});
+V.onclick = (e) => { const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.t) { tab = b.dataset.t; document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b)); render(); }
+  if (b.dataset.c) edit(cache.find((r) => r.id == b.dataset.c)); };
+$('#month').onchange = (e) => { month = e.target.value; render(); }; if (isMgr) $('#emp').onchange = (e) => { emp = e.target.value; tab = 'mine'; render(); };
+$('#in').onclick = guard(async () => { toast((await api('/attendance/check-in', { method: 'POST' })).message); emp = me.employee_id; render(); });
+$('#outb').onclick = guard(async () => { toast((await api('/attendance/check-out', { method: 'POST' })).message); render(); });
+render();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

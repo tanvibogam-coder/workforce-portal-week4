@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Leave Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Leave Management", ALL); if (!me) return; const V = $('#view');
+
+const isMgr = MGR.includes(me.role), TYPES = ['Casual Leave', 'Sick Leave', 'Earned Leave', 'Unpaid Leave', 'Optional Holiday'];
+V.innerHTML = `<div class="page-h"><div><h1>Leave</h1><p>Apply, track and approve leave</p></div><span class="sp"></span><button class="pri" id="apply">Apply for leave</button></div><div class="cards" id="bal"></div>
+<div class="panel"><h2>My leave history</h2><div id="mine"></div></div>
+${isMgr ? '<div class="panel"><h2>Awaiting my approval</h2><div id="appr"></div></div>' : ''}
+<div class="grid2"><div class="panel"><h2>Team leave calendar</h2><div class="bar"><input type="month" id="cm" value="${iso().slice(0, 7)}"></div><div id="cal"></div></div>${isMgr ? '<div class="panel"><h2>All requests in scope</h2><div id="all"></div></div>' : ''}</div>`;
+const base = [{ l: 'Type', k: 'leave_type' }, { l: 'From', f: (r) => day(r.start_date) }, { l: 'To', f: (r) => day(r.end_date) }, { l: 'Days', k: 'days' }, { l: 'Status', f: (r) => badge(r.status) }];
+const decide = (id, decision) => modal(decision === 'approve' ? 'Approve leave' : 'Reject leave', [{ name: 'comment', label: 'Comment (optional)', type: 'textarea' }], {}, async (v) => { toast('Marked ' + (await api(`/leave/${id}/decide`, { method: 'POST', body: { decision, comment: v.comment } })).status); load(); }, decision === 'approve' ? 'Approve' : 'Reject');
+const cal = guard(async () => { const r = await api('/leave/calendar?month=' + $('#cm').value); $('#cal').innerHTML = table([{ l: 'Employee', k: 'full_name' }, { l: 'Type', k: 'leave_type' }, { l: 'From', f: (x) => day(x.start_date) }, { l: 'To', f: (x) => day(x.end_date) }], r, 'No approved leave this month.'); });
+const load = guard(async () => {
+  const [bal, all] = await Promise.all([api('/leave/balances'), api('/leave')]);
+  $('#bal').innerHTML = bal.map((b) => `<div class="card"><div class="n">${b.balance}</div><div class="l">${b.leave_type}</div></div>`).join('');
+  $('#mine').innerHTML = table([...base, { l: 'Reason', k: 'reason' }, { l: 'Comment', f: (r) => esc(r.comment || '—') }], all.filter((r) => r.employee_id == me.employee_id));
+  if (isMgr) {
+    const open = all.filter((r) => r.employee_id != me.employee_id && (r.status === 'Pending' || (r.status === 'Pending HR' && HRR.includes(me.role))));
+    $('#appr').innerHTML = table([{ l: 'Employee', k: 'full_name' }, ...base, { l: 'Reason', k: 'reason' }, { l: '', f: (r) => `<button class="sm pri" data-a="${r.id}">Approve</button> <button class="sm dng" data-r="${r.id}">Reject</button>` }], open, 'No requests waiting.');
+    $('#all').innerHTML = table([{ l: 'Employee', k: 'full_name' }, ...base], all);
+  }
+  cal();
+});
+V.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.a) decide(b.dataset.a, 'approve'); if (b.dataset.r) decide(b.dataset.r, 'reject'); };
+$('#cm').onchange = cal;
+$('#apply').onclick = () => modal('Apply for leave', [{ name: 'leave_type', label: 'Leave type', type: 'select', options: TYPES.map((t) => [t, t]), required: true }, { name: 'start_date', label: 'Start date', type: 'date', required: true }, { name: 'end_date', label: 'End date', type: 'date', required: true }, { name: 'reason', label: 'Reason', type: 'textarea', required: true }], {},
+  async (v) => { const r = await api('/leave', { method: 'POST', body: v }); toast(`Submitted (${r.days} working day${r.days > 1 ? 's' : ''}).`); load(); loadNotes(); }, 'Submit');
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

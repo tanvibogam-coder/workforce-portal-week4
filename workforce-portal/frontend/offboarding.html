@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offboarding Management · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Offboarding Management", MGR); if (!me) return; const V = $('#view');
+
+const isHR = HRR.includes(me.role);
+V.innerHTML = `<div class="page-h"><div><h1>Offboarding</h1><p>Exit requests, clearance, assets and access revocation</p></div><span class="sp"></span><button class="pri" id="new">Initiate exit request</button></div><div class="panel"><div id="list"></div></div>`;
+const cb = (r, f) => (isHR ? `<input type="checkbox" data-id="${r.id}" data-f="${f}" ${r[f] ? 'checked' : ''} ${r.status === 'Completed' ? 'disabled' : ''}>` : badge(r[f] ? 'Yes' : 'No'));
+const load = guard(async () => { const r = await api('/offboarding');
+  $('#list').innerHTML = table([{ l: 'Employee', k: 'full_name' }, { l: 'Department', k: 'department' }, { l: 'Resigned', f: (x) => day(x.resignation_date) }, { l: 'Exit date', f: (x) => day(x.exit_date) }, { l: 'Approved', f: (x) => cb(x, 'approved') }, { l: 'Clearance', f: (x) => cb(x, 'clearance') }, { l: 'Assets returned', f: (x) => cb(x, 'assets_returned') }, { l: 'Access revoked', f: (x) => cb(x, 'access_revoked') }, { l: 'Final docs', f: (x) => cb(x, 'docs_done') }, { l: 'Status', f: (x) => badge(x.status) }], r, 'No exit requests.'); });
+V.onchange = guard(async (e) => { const t = e.target; if (!t.dataset.f) return; if (t.dataset.f === 'access_revoked' && t.checked && !(await confirmBox('Record that system access has been revoked?'))) { t.checked = false; return; }
+  const r = await api('/offboarding/' + t.dataset.id, { method: 'PUT', body: { [t.dataset.f]: t.checked } }); if (r.status === 'Completed') toast('Exit completed — account disabled.'); load(); });
+$('#new').onclick = guard(async () => { const p = await lookup();
+  modal('Initiate exit request', [{ name: 'employee_id', label: 'Employee', type: 'select', options: p.filter(([v]) => v != me.employee_id), required: true }, { name: 'resignation_date', label: 'Resignation date', type: 'date', required: true }, { name: 'exit_date', label: 'Last working day', type: 'date', required: true }], {},
+    async (v) => { await api('/offboarding', { method: 'POST', body: { ...v, employee_id: +v.employee_id } }); toast('Exit request created — awaiting HR approval.'); load(); }); });
+load();
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>

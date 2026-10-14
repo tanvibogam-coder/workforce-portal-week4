@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Employee Profile · Workforce Portal</title><link rel="stylesheet" href="css/style.css"></head><body><div id="root"></div>
+<script src="js/api.js"></script><script src="js/ui.js"></script>
+<script>(async () => { const me = shell("Employee Profile", ALL); if (!me) return; const V = $('#view');
+
+const id = new URLSearchParams(location.search).get('id') || me.employee_id, own = id == me.employee_id, isHR = HRR.includes(me.role);
+let D; try { D = await api('/employees/' + id); } catch (e) { V.innerHTML = `<div class="panel"><h2>Unable to open profile</h2><p>${esc(e.message)}</p></div>`; return; }
+const e = D.employee, ini = e.full_name.split(' ').map((x) => x[0]).slice(0, 2).join('');
+V.innerHTML = `<div class="page-h"><div style="display:flex;gap:14px;align-items:center"><div style="width:64px;height:64px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:22px;font-weight:700">${esc(ini)}</div><div><h1>${esc(e.full_name)}</h1><p>${esc(e.designation)} · ${esc(e.department)} ${badge(e.status)}</p></div></div></div>
+<div class="grid2"><div class="panel"><h2>Employee details</h2><div class="kv">${[['Employee ID', e.emp_code], ['Email', e.email], ['Contact', e.phone || '—'], ['Reporting manager', e.manager || '—'], ['Joined', day(e.joining_date)], ['Tenure', `${Math.floor(e.tenure_days / 365)} years ${Math.floor((e.tenure_days % 365) / 30)} months (${e.tenure_days} days)`], ['Employment type', e.employment_type], ['Work location', e.work_location || '—'], ['Salary band', e.salary_band || '—']].map(([k, v]) => `<span>${k}</span><span>${esc(v)}</span>`).join('')}</div></div>
+<div class="panel"><h2>Documents</h2>${D.documents.length ? '<ul>' + D.documents.map((d) => `<li>${esc(d)}</li>`).join('') + '</ul>' : '<div class="empty">No documents uploaded.</div>'}
+${isHR ? '<div class="bar"><input type="file" id="file"><button id="up" class="pri">Upload</button></div><small>PDF, images, Word or text · max 5 MB</small>' : ''}</div></div>
+${own ? `<div class="panel"><h2>Change password</h2><div class="bar"><input type="password" id="cur" placeholder="Current password"><input type="password" id="new" placeholder="New password (8+ chars, letters & numbers)"><button id="pw" class="pri">Update password</button></div></div>` : ''}
+<div class="panel"><h2>Profile update history</h2>${table([{ l: 'When', f: (h) => fmt(h.created_at) }, { l: 'Field', k: 'field' }, { l: 'Old value', k: 'old_value' }, { l: 'New value', k: 'new_value' }, { l: 'Changed by', k: 'changed_by' }], D.history, 'No changes recorded.')}</div>`;
+if (isHR) $('#up').onclick = guard(async () => { const f = $('#file').files[0]; if (!f) return toast('Choose a file first.', 'bad'); const fd = new FormData(); fd.append('file', f); toast((await api(`/employees/${id}/documents`, { method: 'POST', form: fd })).message); setTimeout(() => location.reload(), 600); });
+if (own) $('#pw').onclick = guard(async () => { toast((await api('/auth/password', { method: 'PUT', body: { current: $('#cur').value, new: $('#new').value } })).message); $('#cur').value = $('#new').value = ''; });
+
+})().catch((e) => { const v = document.querySelector('#view'); if (v) v.innerHTML = '<div class="panel"><h2>Something went wrong</h2><p>' + esc(e.message) + '</p></div>'; console.error(e); });</script></body></html>
